@@ -21,7 +21,7 @@ from jinja2 import Environment, FileSystemLoader
 from www import orm
 
 from www.coroweb import add_routes, add_static
-from www.handlers import cookie2user,COOKIE_NAME
+from www.handlers import cookie2user, COOKIE_NAME
 
 
 def init_jinja2(app, **kw):
@@ -53,19 +53,21 @@ async def logger_factory(app, handler):
 
     return logger
 
-async def auth_factory(app,handler):
+
+async def auth_factory(app, handler):
     async def auth(request):
-        logging.info('check user: %s %s' %(request.method,request.path))
-        request.__user__=None
+        logging.info('check user: %s %s' % (request.method, request.path))
+        request.__user__ = None
         cookie_str = request.cookies.get(COOKIE_NAME)
         if cookie_str:
             user = await cookie2user(cookie_str)
             if user:
                 logging.info('set current user: %s' % user.email)
                 request.__user__ = user
-        if request.path.startswith('/manage/') and (request.__user__ is None or not request.__user__.addmin):
+        if request.path.startswith('/manage/') and (request.__user__ is None or not request.__user__.admin):
             return web.HTTPFound('signin')
         return (await handler(request))
+
     return auth
 
 
@@ -107,6 +109,7 @@ async def response_factory(app, handler):
                 resp.content_type = 'application/json;charset=utf-8'
                 return resp
             else:
+                r['__user__'] = request.__user__
                 resp = web.Response(body=app['__templating__'].get_template(template).render(**r).encode('utf-8'))
                 resp.content_type = 'text/html;charset=utf-8'
                 return resp
@@ -138,14 +141,10 @@ def datetime_filter(t):
     return u'%s年%s月%s日' % (dt.year, dt.month, dt.day)
 
 
-def index(request):
-    return web.Response(body=b'<h1>Awesome</h1>')
-
-
 async def init(loop):
     await orm.create_pool(loop=loop, host='10.10.30.55', port=3306, user='root', password='tuniu520', db='chen')
     app = web.Application(loop=loop, middlewares=[
-        logger_factory, response_factory,auth_factory
+        logger_factory, response_factory, auth_factory
     ])
     init_jinja2(app, filters=dict(datetime=datetime_filter))
     add_routes(app, 'handlers')
